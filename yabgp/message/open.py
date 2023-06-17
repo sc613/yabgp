@@ -214,8 +214,6 @@ class Open(object):
                 # Go to next Optional Parameter
                 self.opt_paras = self.opt_paras[opt_para_length + 2:]
 
-        print('asdfasdfasdfasdf')
-
         # certificate
         certificate = message[10 + self.opt_para_len :]
         len_prefixes = certificate[0]
@@ -243,6 +241,8 @@ class Open(object):
         allowed_prefixes = []
         for i in range(len_prefixes):
             mask_len = prefixes[5 * i]
+            print(mask_len)
+            print(prefixes[1 + 5 * i : 5 + 5 * i])
             prefix = str(netaddr.IPAddress(struct.unpack('!L', prefixes[1 + 5 * i : 5 + 5 * i])))
             allowed_prefixes.append('/'.join([prefix, str(mask_len)]))
         self.allowed_prefixes = allowed_prefixes
