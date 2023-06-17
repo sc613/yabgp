@@ -242,7 +242,7 @@ class Open(object):
         allowed_prefixes = []
         for i in range(len_prefixes):
             mask_len = prefixes[5 * i]
-            prefix = str(netaddr.IPAddress(struct.unpack('!L', prefixes[1 + 5 * i : 5 + 5 * i])))
+            prefix = str(netaddr.IPAddress(struct.unpack('!L', prefixes[1 + 5 * i : 5 + 5 * i])[0]))
             allowed_prefixes.append('/'.join([prefix, str(mask_len)]))
         self.allowed_prefixes = allowed_prefixes
 
