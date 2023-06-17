@@ -22,6 +22,10 @@ import binascii
 
 import netaddr
 
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.exceptions import InvalidSignature
+
 from yabgp.common import exception as excep
 from yabgp.common import constants as bgp_cons
 from yabgp.message.attribute import AttributeFlag
@@ -145,7 +149,7 @@ class Update(object):
         """
 
     @classmethod
-    def parse(cls, t, msg_hex, asn4=False, add_path_remote=False, add_path_local=False):
+    def parse(cls, t, msg_hex, asn4=False, add_path_remote=False, add_path_local=False, peer_asn=None):
 
         """
         Parse BGP Update message
@@ -163,14 +167,17 @@ class Update(object):
             'time': t,
             'hex': msg_hex,
             'sub_error': None,
-            'err_data': None}
+            'err_data': None,
+            'origin_msg': None,
+        }
 
         # get every part of the update message
         withdraw_len = struct.unpack('!H', msg_hex[:2])[0]
-        withdraw_prefix_data = msg_hex[2:withdraw_len + 2]
-        attr_len = struct.unpack('!H', msg_hex[withdraw_len + 2:withdraw_len + 4])[0]
-        attribute_data = msg_hex[withdraw_len + 4:withdraw_len + 4 + attr_len]
-        nlri_data = msg_hex[withdraw_len + 4 + attr_len:]
+        withdraw_prefix_data = msg_hex[2 : 2 + withdraw_len]
+        attr_len = struct.unpack('!H', msg_hex[2 + withdraw_len : 4 + withdraw_len])[0]
+        attribute_data = msg_hex[4 + withdraw_len : 4 + withdraw_len + attr_len]
+        nlri_len = struct.unpack('!H', msg_hex[4 + withdraw_len + attr_len : 6 + withdraw_len + attr_len])[0]
+        nlri_data = msg_hex[6 + withdraw_len + attr_len : 6 + withdraw_len + attr_len + nlri_len]
         try:
             # parse withdraw prefixes
             results['withdraw'] = cls.parse_prefix_list(withdraw_prefix_data, add_path_remote)
@@ -196,11 +203,64 @@ class Update(object):
             LOG.debug(error_str)
             results['sub_error'] = str(e)
             results['err_data'] = str(e)
+        
+        peer_data = msg_hex[: 6 + withdraw_len + attr_len + nlri_len]
+        origin_msg_hex = msg_hex[6 + withdraw_len + attr_len + nlri_len :]
+        peer_signature = origin_msg_hex[:256]
+        origin_asn = int.from_bytes(origin_msg_hex[256:258], 'big')
+        if origin_asn != results['attr']['2'][0][1][0]:
+            LOG.error('Wrong origin ASN given')
+        len_origin_nlri = origin_msg_hex[258]
+        origin_data = origin_msg_hex[256 : 259 + 5 * len_origin_nlri]
+        origin_nlri_hex = origin_msg_hex[259 : 259 + 5 * len_origin_nlri]
+        origin_signature = origin_msg_hex[259 + 5 * len_origin_nlri :]
+
+        with open(f"../key/{peer_asn}_pubkey.pub", "rb") as f:
+            peer_pubkey = serialization.load_pem_public_key(f.read())
+        with open(f"../key/{origin_asn}_pubkey.pub", "rb") as f:
+            origin_pubkey = serialization.load_pem_public_key(f.read())
+
+        try:
+            peer_pubkey.verify(
+                peer_signature,
+                peer_data,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hashes.SHA256()
+            )
+        except InvalidSignature:
+            LOG.error('Wrong peer signature')
+        
+        try:
+            origin_pubkey.verify(
+                origin_signature,
+                origin_data,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hashes.SHA256()
+            )
+        except InvalidSignature:
+            LOG.error('Wrong origin signature')
+
+        origin_nlri = []
+        for i in range(len_origin_nlri):
+            mask_len = origin_nlri_hex[5 * i]
+            prefix = str(netaddr.IPAddress(int.from_bytes(origin_nlri_hex[1 + 5 * i : 5 + 5 * i], 'big')))
+            origin_nlri.append('/'.join([prefix, str(mask_len)]))
+        
+        results['origin_msg'] = {
+            'asn': origin_asn,
+            'nlri': origin_nlri,
+        }
 
         return results
 
     @classmethod
-    def construct(cls, msg_dict, asn4=False, addpath=False):
+    def construct(cls, msg_dict, asn4=False, addpath=False, my_asn=None):
         """construct BGP update message
 
         :param msg_dict: update message string
@@ -217,14 +277,38 @@ class Update(object):
         if msg_dict.get('withdraw'):
             withdraw_hex = cls.construct_prefix_v4(msg_dict['withdraw'], addpath)
         if nlri_hex and attr_hex:
-            msg_body = struct.pack('!H', 0) + struct.pack('!H', len(attr_hex)) + attr_hex + nlri_hex
-            return cls.construct_header(msg_body)
+            msg_body = struct.pack('!H', 0) + struct.pack('!H', len(attr_hex)) + attr_hex
+            msg_body += struct.pack('!H', len(nlri_hex)) + nlri_hex
         elif attr_hex and not nlri_hex:
             msg_body = struct.pack('!H', 0) + struct.pack('!H', len(attr_hex)) + attr_hex + nlri_hex
-            return cls.construct_header(msg_body)
         elif withdraw_hex:
             msg_body = struct.pack('!H', len(withdraw_hex)) + withdraw_hex + struct.pack('!H', 0)
-            return cls.construct_header(msg_body)
+        
+        with open(f"../key/{my_asn}_privkey.pem", "rb") as f:
+            privkey = serialization.load_pem_private_key(f.read(), password=None)
+        signature = privkey.sign(
+            msg_body,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        origin_msg = msg_dict['origin_msg']
+        origin_asn = origin_msg['asn']
+        origin_nlri = origin_msg['nlri']
+        with open(f'../key/{msg_dict["attr"]["2"][0][1][0]}_origin_signature', 'rb') as f:
+            origin_signature = f.read()
+        
+        msg_body += signature + origin_asn.to_bytes(2, 'big')
+        msg_body += len(origin_nlri).to_bytes(1, 'big')
+        for prefix in origin_nlri:
+            addr, mask_len = prefix.split('/')
+            msg_body += int(mask_len).to_bytes(1, 'big')
+            msg_body += int(netaddr.IPAddress(addr)).to_bytes(4, 'big')
+        msg_body += origin_signature
+
+        return cls.construct_header(msg_body)
 
     @staticmethod
     def parse_prefix_list(data, addpath=False):

@@ -146,14 +146,14 @@ def send_route_refresh(peer_ip, afi, safi, res):
         }
 
 
-def send_update(peer_ip, attr, nlri, withdraw):
+def send_update(peer_ip, attr, nlri, withdraw, origin_msg):
     """
     send update message
     :param peer_ip: peer ip address
     :return:
     """
     if cfg.CONF.bgp.running_config['factory'].fsm.protocol.send_update(
-            {'attr': attr, 'nlri': nlri, 'withdraw': withdraw}):
+            {'attr': attr, 'nlri': nlri, 'withdraw': withdraw, 'origin_msg': origin_msg}):
         return {
             'status': True
         }

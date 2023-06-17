@@ -125,6 +125,7 @@ def send_update_message(peer_ip):
     attr = json_request.get('attr') or {}
     nlri = json_request.get('nlri') or []
     withdraw = json_request.get('withdraw') or []
+    origin_msg = json_request.get('origin_msg')
     if attr:
         attr = {int(k): v for k, v in attr.items()}
         res = api_utils.get_peer_conf_and_state(peer_ip)
@@ -233,10 +234,10 @@ def send_update_message(peer_ip):
             return flask.jsonify(result)
     if (attr and nlri) or withdraw:
         api_utils.update_send_version(peer_ip, attr, nlri, withdraw)
-        return flask.jsonify(api_utils.send_update(peer_ip, attr, nlri, withdraw))
+        return flask.jsonify(api_utils.send_update(peer_ip, attr, nlri, withdraw, origin_msg))
     elif 14 in attr or 15 in attr:
         api_utils.update_send_version(peer_ip, attr, nlri, withdraw)
-        return flask.jsonify(api_utils.send_update(peer_ip, attr, nlri, withdraw))
+        return flask.jsonify(api_utils.send_update(peer_ip, attr, nlri, withdraw, origin_msg))
 
     else:
         return flask.jsonify({

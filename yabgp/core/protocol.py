@@ -262,7 +262,8 @@ class BGP(protocol.Protocol):
 
         """Called when a BGP Update message was received."""
         result = Update().parse(
-            timestamp, msg, self.fourbytesas, self.add_path_ipv4_receive, self.add_path_ipv4_send)
+            timestamp, msg, self.fourbytesas, self.add_path_ipv4_receive, self.add_path_ipv4_send, self.factory.peer_asn)
+        LOG.info("[%s]A BGP Update message was received and verified", self.factory.peer_addr)
         if result['sub_error']:
             msg = {
                 'attr': result['attr'],
@@ -291,7 +292,8 @@ class BGP(protocol.Protocol):
             'attr': result['attr'],
             'nlri': result['nlri'],
             'withdraw': result['withdraw'],
-            'afi_safi': afi_safi
+            'afi_safi': afi_safi,
+            'origin_msg': result['origin_msg'],
         }
 
         self.update_receive_verion(result['attr'], result['nlri'], result['withdraw'])
@@ -313,7 +315,7 @@ class BGP(protocol.Protocol):
         :return:
         """
         try:
-            msg_update = Update().construct(msg, self.fourbytesas, self.add_path_ipv4_send)
+            msg_update = Update().construct(msg, self.fourbytesas, self.add_path_ipv4_send, self.factory.my_asn)
             reactor.callFromThread(self.write_tcp_thread, msg_update)
             self.msg_sent_stat['Updates'] += 1
 
