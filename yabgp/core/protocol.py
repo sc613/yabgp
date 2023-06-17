@@ -315,7 +315,9 @@ class BGP(protocol.Protocol):
         :return:
         """
         try:
+            print('A')
             msg_update = Update().construct(msg, self.fourbytesas, self.add_path_ipv4_send, self.factory.my_asn)
+            print('B')
             reactor.callFromThread(self.write_tcp_thread, msg_update)
             self.msg_sent_stat['Updates'] += 1
 
