@@ -214,6 +214,8 @@ class Open(object):
                 # Go to next Optional Parameter
                 self.opt_paras = self.opt_paras[opt_para_length + 2:]
 
+        print('asdfasdfasdfasdf')
+
         # certificate
         certificate = message[10 + self.opt_para_len :]
         len_prefixes = certificate[0]
