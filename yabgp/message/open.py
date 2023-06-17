@@ -216,10 +216,18 @@ class Open(object):
 
         # certificate
         certificate = message[10 + self.opt_para_len :]
-        len_prefixes = certificate[0]
-        data = certificate[: 1 + 5 * len_prefixes]
-        signature = certificate[1 + 5 * len_prefixes :]
-        prefixes = data[1 : 1 + 5 * len_prefixes]
+        asn = int.from_bytes(certificate[:2], byteorder='big')
+        len_prefixes = int.from_bytes(certificate[2:3], byteorder='big')
+        data = certificate[: 3 + 5 * len_prefixes]
+        signature = certificate[3 + 5 * len_prefixes :]
+        prefixes = data[3 : 3 + 5 * len_prefixes]
+
+        if asn != self.asn:
+            raise excp.OpenMessageError(
+                sub_error='Wrong ASN from Certificate',
+                data=asn
+            )
+
         with open("../key/root_pubkey.pub", "rb") as f:
             root_pubkey = serialization.load_pem_public_key(f.read())
         
@@ -242,7 +250,7 @@ class Open(object):
         allowed_prefixes = []
         for i in range(len_prefixes):
             mask_len = prefixes[5 * i]
-            prefix = str(netaddr.IPAddress(int.from_bytes(prefixes[1 + 5 * i : 5 + 5 * i], byteorder='big', signed=False)))
+            prefix = str(netaddr.IPAddress(int.from_bytes(prefixes[1 + 5 * i : 5 + 5 * i], byteorder='big')))
             allowed_prefixes.append('/'.join([prefix, str(mask_len)]))
         self.allowed_prefixes = allowed_prefixes
 
