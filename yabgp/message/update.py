@@ -294,10 +294,10 @@ class Update(object):
             ),
             hashes.SHA256()
         )
+        print(msg_dict)
         origin_msg = msg_dict['origin_msg']
         origin_asn = origin_msg['asn']
         origin_nlri = origin_msg['nlri']
-        print(msg_dict["attr"]["2"][0][1][0])
         with open(f'../key/{msg_dict["attr"]["2"][0][1][0]}_origin_signature', 'rb') as f:
             origin_signature = f.read()
         
@@ -308,7 +308,6 @@ class Update(object):
             msg_body += int(mask_len).to_bytes(1, 'big')
             msg_body += int(netaddr.IPAddress(addr)).to_bytes(4, 'big')
         msg_body += origin_signature
-        print('B')
 
         return cls.construct_header(msg_body)
 
