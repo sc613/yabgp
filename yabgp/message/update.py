@@ -208,7 +208,7 @@ class Update(object):
         origin_msg_hex = msg_hex[6 + withdraw_len + attr_len + nlri_len :]
         peer_signature = origin_msg_hex[:256]
         origin_asn = int.from_bytes(origin_msg_hex[256:258], 'big')
-        if origin_asn != results['attr']['2'][0][1][0]:
+        if origin_asn != results['attr'][2][0][1][0]:
             LOG.error('Wrong origin ASN given')
         len_origin_nlri = origin_msg_hex[258]
         origin_data = origin_msg_hex[256 : 259 + 5 * len_origin_nlri]
@@ -294,11 +294,10 @@ class Update(object):
             ),
             hashes.SHA256()
         )
-        print(msg_dict)
         origin_msg = msg_dict['origin_msg']
         origin_asn = origin_msg['asn']
         origin_nlri = origin_msg['nlri']
-        with open(f'../key/{msg_dict["attr"]["2"][0][1][0]}_origin_signature', 'rb') as f:
+        with open(f'../key/{msg_dict["attr"][2][0][1][0]}_origin_signature', 'rb') as f:
             origin_signature = f.read()
         
         msg_body += signature + origin_asn.to_bytes(2, 'big')
