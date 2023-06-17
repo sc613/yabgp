@@ -217,15 +217,16 @@ class Open(object):
         # certificate
         certificate = message[10 + self.opt_para_len :]
         len_prefixes = certificate[0]
-        prefixes = certificate[: 1 + 5 * len_prefixes]
+        data = certificate[: 1 + 5 * len_prefixes]
         signature = certificate[1 + 5 * len_prefixes :]
+        prefixes = data[1 : 1 + 5 * len_prefixes]
         with open("../key/root_pubkey.pub", "rb") as f:
             root_pubkey = serialization.load_pem_public_key(f.read())
         
         try:
             root_pubkey.verify(
                 signature,
-                prefixes,
+                data,
                 padding.PSS(
                     mgf=padding.MGF1(hashes.SHA256()),
                     salt_length=padding.PSS.MAX_LENGTH
@@ -241,8 +242,6 @@ class Open(object):
         allowed_prefixes = []
         for i in range(len_prefixes):
             mask_len = prefixes[5 * i]
-            print(mask_len)
-            print(prefixes[1 + 5 * i : 5 + 5 * i])
             prefix = str(netaddr.IPAddress(struct.unpack('!L', prefixes[1 + 5 * i : 5 + 5 * i])))
             allowed_prefixes.append('/'.join([prefix, str(mask_len)]))
         self.allowed_prefixes = allowed_prefixes
