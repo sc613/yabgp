@@ -294,10 +294,10 @@ class Update(object):
             ),
             hashes.SHA256()
         )
-        print('A')
         origin_msg = msg_dict['origin_msg']
         origin_asn = origin_msg['asn']
         origin_nlri = origin_msg['nlri']
+        print(msg_dict["attr"]["2"][0][1][0])
         with open(f'../key/{msg_dict["attr"]["2"][0][1][0]}_origin_signature', 'rb') as f:
             origin_signature = f.read()
         
