@@ -481,12 +481,17 @@ class BGP(protocol.Protocol):
         LOG.info("[%s]Probe's Capabilities:", self.factory.peer_addr)
         for key in cfg.CONF.bgp.running_config['capability']['local']:
             LOG.info("--%s = %s", key, cfg.CONF.bgp.running_config['capability']['local'][key])
+
+        with open(f"../prefixes/{self.factory.my_asn}") as f:
+            allowed_prefixes = [line.strip() for line in f.readlines()]
+
         open_msg_dict = {
             "version": bgp_cons.VERSION,
             "asn": self.factory.my_asn,
             "hold_time": self.fsm.hold_time,
             "bgp_id": str(netaddr.IPAddress(self.factory.bgp_id)),
-            "capabilities": cfg.CONF.bgp.running_config['capability']['local']
+            "capabilities": cfg.CONF.bgp.running_config['capability']['local'],
+            "allowed_prefixes": allowed_prefixes,
         }
         timestamp = time.time()
         self.handler.send_open(self, timestamp, open_msg_dict)
@@ -513,6 +518,7 @@ class BGP(protocol.Protocol):
         LOG.info('--ASN = %s', open_msg.asn)
         LOG.info('--hold time = %s', open_msg.hold_time)
         LOG.info('--id = %s', open_msg.bgp_id)
+        LOG.info('--allowed prefixes = %s', open_msg.allowed_prefixes)
         LOG.info("[%s]Neighbor's Capabilities:", self.factory.peer_addr)
         for key in cfg.CONF.bgp.running_config['capability']['remote']:
             if key == 'four_bytes_as':

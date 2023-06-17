@@ -21,6 +21,10 @@ import netaddr
 from yabgp.common import exception as excp
 from yabgp.common import constants as bgp_cons
 
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.exceptions import InvalidSignature
+
 
 class Open(object):
     """
@@ -65,6 +69,8 @@ class Open(object):
         self.capa_dict = {}
         # used to store Capabilities {code: value}
 
+        self.allowed_prefixes = []
+
     def parse(self, message):
 
         """Parses a BGP Open message"""
@@ -104,7 +110,7 @@ class Open(object):
         # Optional Parameters
         if self.opt_para_len:
 
-            self.opt_paras = message[10:]
+            self.opt_paras = message[10 : 10 + self.opt_para_len]
 
             # While Loop: Parse one Optional Parameter(Capability) each time
             while self.opt_paras:
@@ -208,13 +214,45 @@ class Open(object):
                 # Go to next Optional Parameter
                 self.opt_paras = self.opt_paras[opt_para_length + 2:]
 
-            return {
-                'version': self.version,
-                'asn': self.asn,
-                'hold_time': self.hold_time,
-                'bgp_id': self.bgp_id,
-                'capabilities': self.capa_dict
-            }
+        # certificate
+        certificate = message[10 + self.opt_para_len :]
+        len_prefixes = certificate[0]
+        prefixes = certificate[: 1 + 5 * len_prefixes]
+        signature = certificate[1 + 5 * len_prefixes :]
+        with open("../key/root_pubkey.pub", "rb") as f:
+            root_pubkey = serialization.load_pem_public_key(f.read())
+        
+        try:
+            root_pubkey.verify(
+                signature,
+                prefixes,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hashes.SHA256()
+            )
+        except InvalidSignature:
+            raise excp.OpenMessageError(
+                sub_error='Invalid Certificate',
+                data=certificate
+            )
+
+        allowed_prefixes = []
+        for i in range(len_prefixes):
+            mask_len = prefixes[5 * i]
+            prefix = str(netaddr.IPAddress(struct.unpack('!L', prefixes[1 + 5 * i : 5 + 5 * i])))
+            allowed_prefixes.append('/'.join([prefix, str(mask_len)]))
+        self.allowed_prefixes = allowed_prefixes
+
+        return {
+            'version': self.version,
+            'asn': self.asn,
+            'hold_time': self.hold_time,
+            'bgp_id': self.bgp_id,
+            'capabilities': self.capa_dict,
+            'allowed_prefixes': self.allowed_prefixes
+        }
 
     @staticmethod
     def construct_header(msg):
@@ -262,6 +300,12 @@ class Open(object):
         open_header = struct.pack('!BHHIB', self.version, self.asn, self.hold_time,
                                   self.bgp_id, len(capas))
         message = open_header + capas
+
+        # certificate
+        with open(f"../key/{self.asn}_certificate", 'rb') as f:
+            certificate = f.read()
+        message += certificate
+
         return self.construct_header(message)
 
 
